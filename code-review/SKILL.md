@@ -6,21 +6,11 @@ context: fork
 
 # Code Review Skill
 
-## 使い方
-
-- `/code-review` — `main` ブランチとの差分をレビュー
-- `/code-review <ブランチ名>` — 指定ブランチとの差分をレビュー
-
 ## レビュープロセス
 
-1. **差分取得** — 比較対象ブランチとの差分を `git diff` で取得する
-   - 引数でブランチ名が指定されていればそのブランチと比較
-   - 指定がなければ `main` ブランチと比較
-   - `git diff <比較ブランチ>...HEAD` を使い、分岐後の変更のみを対象とする
-2. **差分箇所のみレビュー** — diff で変更された行とその周辺コンテキストのみを対象とする。変更されていないコードはレビュー対象外とする
-3. **全体把握** — 変更の目的と影響範囲を理解
-4. **観点別チェック** — 下記チェックリストに沿って変更箇所を評価
-5. **フィードバック作成** — 重要度付きで改善提案
+1. **全体把握** — コードの目的と構造を理解
+2. **観点別チェック** — 下記チェックリストに沿って評価
+3. **フィードバック作成** — 重要度付きで改善提案
 
 ## チェックリスト
 
@@ -67,6 +57,67 @@ context: fork
 ## 良い点
 [ポジティブなフィードバックも含める]
 ```
+
+## GitHub PR連携
+
+PR番号またはPR URLが引数として渡された場合、レビュー結果をGitHub PRにコメントとして投稿する。
+GitHub APIとの連携はすべて `gh` CLI に統一する（MCP GitHub ツールは使用しない）。
+
+### 手順
+
+1. PR情報と差分を取得:
+
+```bash
+# PR情報の取得
+gh pr view {pr_number} --repo {owner}/{repo} --json number,title,body,headRefName,baseRefName,commits
+
+# 変更ファイル一覧とdiffの取得
+gh pr diff {pr_number} --repo {owner}/{repo}
+```
+
+2. 差分に基づいてレビューを実施
+
+3. レビュー結果を **Pending状態（Start a Review）** で投稿:
+
+```bash
+# stdin経由でJSONを渡して投稿（ファイル書き込み不要）
+gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews \
+  --method POST \
+  --input - <<'EOF'
+{
+  "body": "レビューサマリー本文",
+  "comments": [
+    {
+      "path": "src/example.tsx",
+      "line": 42,
+      "body": "### 🔴 [MUST] タイトル\n\n問題の説明。\n\n**提案**:\n（コード例やアドバイス）"
+    }
+  ]
+}
+EOF
+```
+
+**重要**:
+- `event` フィールドは **絶対に含めない** こと。省略するとデフォルトで `PENDING`（ドラフト）状態になる。`event` に `"COMMENT"` や `"PENDING"` などを指定すると即座に投稿されてしまうので注意。
+- `/tmp` へのファイル書き込みは権限で失敗する可能性があるため、必ず `--input -` でstdin経由のヒアドキュメントを使うこと。
+- MCP GitHub ツール (`mcp__github__*`) は使用しないこと。`gh` CLI に統一する。
+
+4. 投稿完了後、PRのURLをユーザーに返し、Pending状態であることを伝える
+
+### owner/repo の解決
+
+```bash
+# リモートURLから取得
+gh repo view --json owner,name --jq '"\(.owner.login)/\(.name)"'
+```
+
+- PR URLが渡された場合はURLからパース
+- PR番号のみの場合は上記コマンドで現在のリポジトリから取得
+
+### 注意事項
+
+- コメントの `line` にはファイル内の行番号を指定する（diffのposition ではなく）
+- 引数なしで呼ばれた場合は、ローカル出力のみ行いGitHubへの投稿は行わない
 
 ## レビュー時の心構え
 
