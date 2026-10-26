@@ -73,11 +73,23 @@ gh pr view {pr_number} --repo {owner}/{repo} --json number,title,body,headRefNam
 
 # 変更ファイル一覧とdiffの取得
 gh pr diff {pr_number} --repo {owner}/{repo}
+
+# 以前のレビューと、指摘のスレッド（返信を含む）の取得
+gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews --jq '.[] | {id, state, commit_id, body}'
+gh api repos/{owner}/{repo}/pulls/{pull_number}/comments --jq '.[] | {id, in_reply_to_id, path, line, user: .user.login, body}'
 ```
 
-2. 差分に基づいてレビューを実施
+2. 差分に基づいてレビューを実施。以前のレビューがある場合は、下記「再レビュー」に従う
 
-3. レビュー結果を **Pending状態（Start a Review）** で投稿:
+3. 投稿の前に、Pending のレビューが残っていないか確かめる:
+
+```bash
+gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews --jq '[.[] | select(.state == "PENDING")] | length'
+```
+
+1 件以上あれば投稿しない。GitHub では 1 人が 1 つの PR に持てる Pending レビューは 1 件だけで、投稿は 422 エラーになるため。残っているレビューの id と対象コミットを伝え、どうするか（ユーザーが提出または破棄する / 削除してよいか）をユーザーに尋ねる。Pending のレビューはユーザーの下書きなので、許可なく削除・提出しない。
+
+4. レビュー結果を **Pending状態（Start a Review）** で投稿:
 
 ```bash
 # stdin経由でJSONを渡して投稿（ファイル書き込み不要）
@@ -102,7 +114,15 @@ EOF
 - `/tmp` へのファイル書き込みは権限で失敗する可能性があるため、必ず `--input -` でstdin経由のヒアドキュメントを使うこと。
 - MCP GitHub ツール (`mcp__github__*`) は使用しないこと。`gh` CLI に統一する。
 
-4. 投稿完了後、PRのURLをユーザーに返し、Pending状態であることを伝える
+5. 投稿完了後、PRのURLをユーザーに返し、Pending状態であることを伝える
+
+### 再レビュー
+
+以前のレビュー（手順 1 で取得した reviews）がある PR では、同じ指摘を繰り返さないよう次のように進める。
+
+- **範囲**: 最後のレビューの `commit_id` から HEAD までの差分だけをレビューする（`git diff {commit_id}..HEAD`）。rebase などで `commit_id` がたどれない場合は、PR 全体をレビューし、その旨をサマリーに書く
+- **判断済みの指摘**: 以前の指摘のスレッドに、対応しない・別の PR で対応するなどの判断が返信されていれば、その指摘は再び挙げない
+- **対応状況**: 以前の指摘ごとに、対応状況（対応済み（コミット SHA）/ 未対応 / 判断済み（理由））を、新しいレビューの本文に「前回の指摘の対応状況」としてまとめる。スレッドには返信しない。返信は Pending にならず、すぐに公開されるため
 
 ### owner/repo の解決
 
