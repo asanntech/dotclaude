@@ -6,6 +6,8 @@
 
 ```
 .
+├── hooks/           # Claude Code の hooks（settings.json に登録して使う）
+│   └── review-on-pr-update.sh  PR の作成・更新時にレビューを促す
 └── skills/          # カスタムスキル定義（/<skill-name> で呼び出し）
     ├── address-review/   PR のレビュー指摘を 1 周ぶん直す
     ├── clean-branches/   ローカルの不要ブランチを一括削除
@@ -32,6 +34,14 @@
 
 各スキルの詳細は `skills/<name>/SKILL.md` を参照。
 
+## Hooks
+
+| hook | イベント | 説明 |
+|------|---------|------|
+| `review-on-pr-update.sh` | PostToolUse（Bash） | `gh pr create` で PR を作ったとき、または open な PR のあるブランチに push したときに、`/my-code-review <PR番号>` を実行するよう Claude に促す。自分が同じ HEAD をレビュー済みなら促さない。依存: `jq`, `gh` |
+
+スキル名は環境変数 `REVIEW_SKILL`（既定 `my-code-review`）と `FIX_SKILL`（既定 `address-review`）で差し替えられる。
+
 ## セットアップ
 
 このリポジトリを `~/.claude` 配下に展開、またはシンボリックリンクで配置して利用する。
@@ -41,6 +51,23 @@ git clone git@github.com:asanntech/dotclaude.git ~/dev/dotclaude
 
 # 例: スキルを ~/.claude/skills にリンク
 ln -s ~/dev/dotclaude/skills ~/.claude/skills
+```
+
+hooks は `~/.claude/settings.json` に登録する。
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "~/dev/dotclaude/hooks/review-on-pr-update.sh" }
+        ]
+      }
+    ]
+  }
+}
 ```
 
 > 配置先のパスは利用環境に合わせて調整すること。
