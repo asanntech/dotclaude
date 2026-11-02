@@ -13,15 +13,16 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty')
 dir=$(printf '%s' "$input" | jq -r '.cwd // empty')
 dir=${dir:-$CLAUDE_PROJECT_DIR}
 
-# コマンドの先頭、または ; & | ( の直後に来たものだけを対象にする（echo "git push" などの文字列には反応しない）
-start='(^|[;&|(][[:space:]]*)'
+# 行頭、または ; & | ( の直後に来たものだけを対象にする（echo "git push" などの文字列には反応しない）。前に空白があってもよい
+start='(^|[;&|(])[[:space:]]*'
 
 if printf '%s' "$cmd" | grep -Eq "${start}gh[[:space:]]+pr[[:space:]]+create"; then
   # gh pr create は成功すると作成した PR の URL を標準出力に出す。URL がなければ PR は作られていないので何もしない
   output=$(printf '%s' "$input" | jq -r '.tool_response.stdout // empty')
   number=$(printf '%s' "$output" | grep -Eo '/pull/[0-9]+' | tail -1 | grep -Eo '[0-9]+')
   event="作成しました"
-elif printf '%s' "$cmd" | grep -Eq "${start}git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+push"; then
+# git -C <path> push は対象外（判定に使う .cwd のリポジトリと、push したリポジトリが一致するとは限らないため）
+elif printf '%s' "$cmd" | grep -Eq "${start}git[[:space:]]+push"; then
   # ブランチを更新しない push（dry-run・削除・タグだけ）は対象外
   printf '%s' "$cmd" | grep -Eq 'push[^;&|]*[[:space:]](--dry-run|-n|--delete|-d|--tags)([[:space:]=]|$)' && exit 0
   cd "$dir" 2>/dev/null || exit 0
