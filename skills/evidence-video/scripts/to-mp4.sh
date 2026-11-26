@@ -21,7 +21,7 @@ encode 28
 size=$(wc -c <"$out" | tr -d ' ')
 if [ "$size" -gt "$limit" ]; then
   echo "サイズが ${size} bytes で 10MB を超えたため、画質を落として再変換します" >&2
-  encode 32 "scale=960:-2"
+  encode 32 "scale='min(960,iw)':-2" # 縦長（スマホ）の動画を拡大しないよう、元の幅より大きくしない
   size=$(wc -c <"$out" | tr -d ' ')
   [ "$size" -gt "$limit" ] && echo "警告: 再変換後も 10MB を超えています（${size} bytes）。手順を分けて録画してください" >&2
 fi

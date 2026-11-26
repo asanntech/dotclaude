@@ -1,15 +1,32 @@
 // 証跡動画の一括再生シナリオの雛形。
 // このファイルを複製した scenario.js の中身を、browser_run_code_unsafe の code に渡して実行する。
 // （filename 指定はプロジェクト外のファイルを読めないため使わない）
-// 書き換えるのは「設定」と「手順」の2か所だけ。after の録画では LABEL だけを変える。
+// 書き換えるのは「設定」と「手順」の2か所だけ。after の録画では LABEL だけを変える（DEVICE も変えない）。
 async (page) => {
   // ===== 設定 =====
   const OUT_DIR = '/abs/path/to/output'; // 出力先（絶対パス）
   const LABEL = 'before';                // before / after など。動画のファイル名になる
   const BASE_URL = 'http://localhost:3000';
-  const SIZE = { width: 1280, height: 720 };
+  const DEVICE = 'desktop';              // desktop / iphone / ipad。before と after で変えない
   const HOLD = 1200;       // 各手順のあと、テロップを読ませる時間（ms）
   const RESULT_HOLD = 2000; // 最後の結果を見せる時間（ms）
+
+  // ===== デバイスのプリセット（エミュレーション。実機ではない） =====
+  // browser_run_code_unsafe から playwright.devices を使える保証がないので、ここに直接書く
+  const DEVICES = {
+    desktop: { viewport: { width: 1280, height: 720 } },
+    iphone: {
+      viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true,
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    },
+    ipad: {
+      viewport: { width: 820, height: 1180 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
+      userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    },
+  };
+  const device = DEVICES[DEVICE];
+  if (!device) throw new Error(`DEVICE "${DEVICE}" は未定義です（${Object.keys(DEVICES).join(' / ')}）`);
+  const SIZE = device.viewport;
 
   // ===== 録画用コンテキスト =====
   const src = page.context();
@@ -18,7 +35,7 @@ async (page) => {
     throw new Error('browser() が null です。Playwright MCP の起動引数に --isolated を付けてください。');
   }
   const ctx = await browser.newContext({
-    viewport: SIZE,
+    ...device,
     recordVideo: { dir: `${OUT_DIR}/.raw`, size: SIZE },
     storageState: await src.storageState(), // 下見で得たログイン状態を引き継ぐ
   });
@@ -32,10 +49,11 @@ async (page) => {
         el = document.createElement('div');
         el.id = '__evidence_caption';
         el.style.cssText = [
-          'position:fixed', 'left:50%', 'bottom:32px', 'transform:translateX(-50%)',
-          'z-index:2147483647', 'max-width:90%', 'padding:12px 24px', 'border-radius:8px',
+          'position:fixed', 'left:50%', 'bottom:clamp(16px,4vh,32px)', 'transform:translateX(-50%)',
+          'z-index:2147483647', 'max-width:90%', 'padding:clamp(8px,2vw,12px) clamp(12px,4vw,24px)', 'border-radius:8px',
           'background:rgba(0,0,0,.82)', 'color:#fff', 'pointer-events:none',
-          'font:600 22px/1.4 -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif',
+          // 画面幅に合わせて縮める（スマホでもはみ出さない）
+          'font:600 clamp(14px,4.5vw,22px)/1.4 -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif',
           'white-space:pre-wrap', 'text-align:center', 'box-shadow:0 4px 16px rgba(0,0,0,.3)',
         ].join(';');
         document.body.appendChild(el);
@@ -80,7 +98,12 @@ async (page) => {
     await caption(text);
     await p.waitForTimeout(hold);
   };
-  const click = (text, locator) => step(text, async () => { await highlight(locator); await locator.click(); });
+  // タッチ対応のデバイスでは、クリックではなくタップとして操作する
+  const click = (text, locator) => step(text, async () => {
+    await highlight(locator);
+    if (device.hasTouch) await locator.tap();
+    else await locator.click();
+  });
   const fill = (text, locator, value) => step(text, async () => { await highlight(locator); await locator.fill(value); });
   const select = (text, locator, value) => step(text, async () => { await highlight(locator); await locator.selectOption(value); });
   // 結果の確認。waitFor で表示を待ってから、強調して長めに見せる
